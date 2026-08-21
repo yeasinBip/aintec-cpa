@@ -2,31 +2,42 @@
 
 Code, data and result tables for the AINTEC 2026 submission.
 
-Everything here runs from `aintec_pipeline.ipynb`. The notebook downloads
+Most of this runs from `aintec_pipeline.ipynb`. The notebook downloads
 VeReMi NextGen (InTAS highway, density 2) from Zenodo, builds the features,
 trains the detectors, and writes every table and figure the paper reports.
 
 Open it in Colab or Jupyter and run the cells in order. Cell outputs have been
-cleared; re-running reproduces them. Cell 1 fetches the
-fifteen attack subsets and asserts each archive is valid, so a failed download
-stops the run rather than silently producing wrong numbers.
+cleared; re-running reproduces them. Cell 1 fetches the fifteen attack subsets
+and asserts each archive is valid, so a failed download stops the run rather
+than silently producing wrong numbers.
+
+One measurement lives outside the notebook. `realisable_time_translation.py`
+is standalone — it downloads what it needs and imports nothing from the
+notebook, so the receiver-range figure for the realisable time translation can
+be checked on its own:
+
+```
+python realisable_time_translation.py
+```
 
 ---
 
 ## Where each claim in the paper is computed
 
-The paper points here four times. This is what it points at.
-
-### "Code, data and full result tables" (contributions, page 1)
+### Result tables and figures
 
 | Paper | Notebook | Output file |
 |---|---|---|
 | Table 1 — per-attack AUC and recall | Cell 5, Cell 5b | `table_auc.csv` |
 | Table 1 across three model classes | Cell 5 | `table_models.csv` |
 | Section 4.3 — GRU over ten-message windows | Cell S1 | `table_sequence.csv` |
-| Section 5.2 — feature importances | Cell S2 | `feature_importance.csv` |
-| Section 5.2, Figure 1 — 24-angle rotation sweep | Cells 6, 7, 7d–7f | `rotation_sweep_final.csv` |
+| Section 4.2 — self-comparison against untransformed streams | Cell T1 | printed in-cell |
+| Figure 1 — receiver-range check, constant offset | Cell 9 | `fig_receiver_range.png` |
+| Figure 2 — 24-angle rotation sweep | Cells 6, 7, 7d–7f | `rotation_sweep_final.csv` |
 | Section 5.2 — rotation under the GRU | Cell S1 | `rotation_gru.csv` |
+| Section 5.2 — feature importances | Cell S2 | `feature_importance.csv` |
+| Table 3 — road mask and receiver range | Cells 7, 7d–7f | `table_cost.csv` |
+| Table 3 — realisable time translation row | `realisable_time_translation.py` | `out/realisable_time_translation.csv` |
 | Section 7 — second density (urban) | Cell S4 | printed in-cell |
 
 ### "The check is scripted in the artifact" (Section 4.1)
@@ -50,8 +61,46 @@ unchanged.
 
 ### "Per-cell intervals are in the artifact" (Table 3 caption)
 
-Cells 7 and 7d–7f. Bootstrap intervals at n = 2000 with Holm–Bonferroni
-correction across angles.
+Cells 7 and 7d–7f, written to `table_cost.csv`. Percentile bootstrap at
+n = 2000, resampling vehicles; the bearing check is conditioned on occupied
+points. Half-width is at or below 0.02 in every cell.
+
+(Holm–Bonferroni correction is used separately, in Section 4.2, to test the two
+invariant attacks' AUCs against chance — not for these intervals.)
+
+### The realisable time translation (Sections 4.4, 5.1, 7 and Table 3)
+
+`realisable_time_translation.py`. Running it writes `out/realisable_time_translation.csv`. Section 5.1 distinguishes
+two realisations of the same group element:
+
+- **benchmark realisation** — shifts both the send and the receive timestamp.
+  The adversary of Section 2.1 cannot write a receive timestamp, so this is not
+  available to them. Claimed position and receiver reference lag together, the
+  sender–receiver distance is largely preserved, and the receiver-range check
+  flags 9 of 95 attacker vehicles, at control. Computed in the notebook.
+- **realisable realisation** — reports the position occupied tau seconds ago
+  under an honest current timestamp. Both clocks genuine. Only the claim lags,
+  so it is displaced from the vehicle's true position by roughly v*tau. This
+  script constructs it and applies the same check.
+
+The script prints, in order: the benign per-transmission maximum
+sender–receiver distance and its 99th percentile (which should land near the
+217.5 m and 321.2 m the paper reports from the benchmark subsets — agreement is
+the evidence that this pipeline and the notebook's measure the same quantity);
+the displacement of the claimed position against the predicted v*tau; the
+receiver-range result with a bootstrap interval; and the saturation diagnostic
+behind the Section 7 caveat.
+
+Two calibration choices, both stated in Section 7:
+
+- benign vehicles are truncated to 35 transmissions, the median attacker trace
+  length, so a long benign trace does not get extra chances to cross the
+  threshold;
+- the threshold is the benign 95th percentile of per-vehicle maximum
+  sender–receiver distance, giving a 5% benign vehicle rate by construction.
+
+This is why the row is not a like-for-like comparison with the attacker-vehicle
+counts beside it in Table 3.
 
 ---
 
@@ -71,8 +120,14 @@ correction across angles.
   and asserts that no sender appears on both sides. An earlier version of that
   split leaked senders across train and test; the assert exists to prevent a
   recurrence, and the paper reports only post-fix values.
+- `realisable_time_translation.py` uses `r_t - TAU` interpolation on each
+  vehicle's own recovered track. Messages whose lagged time precedes the start
+  of that track are dropped rather than clamped; clamping would manufacture a
+  stationary period at the start of every trajectory and depress the measured
+  displacement.
 
 ## Data
 
 VeReMi NextGen, InTAS highway scenario at density 2, from Zenodo record
-19665762. Cell 1 downloads the fifteen attack subsets automatically.
+19665762. Cell 1 downloads the fifteen attack subsets automatically;
+`realisable_time_translation.py` downloads the one subset it needs.
